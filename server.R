@@ -1,21 +1,25 @@
-
-
-library(shiny)
-
-# Define server logic required to draw a histogram
 function(input, output, session) {
 
+  Achats_Filtre <- reactive({
+    
+      if(input$annee != "Tout")
+      {
+        Achats <- Achats %>% 
+          filter(year(Date.Achat) == input$annee)
+      }
+      else{
+        Achats
+      }
+  })
+      
+  
     output$distPlot <- renderPlot({
-
-        # generate bins based on input$bins from ui.R
-        x    <- faithful[, 2]
-        bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-        # draw the histogram with the specified number of bins
-        hist(x, breaks = bins, col = 'darkgray', border = 'white',
-             xlab = 'Waiting time to next eruption (in mins)',
-             main = 'Histogram of waiting times')
-
+        ggplot(Achats_Filtre(),aes(x = NOM_SITE, y = Mnt.Achat))+
+        geom_bar(stat = "identity")+
+        labs(
+          title = paste0("Montant d'achat par site en ",input$annee), 
+          x = "Nom du site", 
+          y = "Montant d'achat total" )
     })
 
 }

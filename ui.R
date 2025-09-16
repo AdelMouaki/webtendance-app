@@ -1,24 +1,21 @@
-
-
-library(shiny)
-
-# Define UI for application that draws a histogram
 fluidPage(
+  
+    # Titre
+    titlePanel("Suivis des performances des différents sites"),
 
-    # Application title
-    titlePanel("Old Faithful Geyser Data"),
-
-    # Sidebar with a slider input for number of bins
+    #Barre latéral
     sidebarLayout(
         sidebarPanel(
-            sliderInput("bins",
-                        "Number of bins:",
-                        min = 1,
-                        max = 50,
-                        value = 30)
+          themeSelector(),
+          
+          selectInput(
+            inputId = "annee",
+            label = "Choisir une année :",
+            choices = c("Tout",year(unique(Achats$Date.Achat)))
+          ),
+
         ),
 
-        # Show a plot of the generated distribution
         mainPanel(
             plotOutput("distPlot")
         )
