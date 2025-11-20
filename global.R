@@ -9,8 +9,12 @@ library(shinythemes)
 library(lubridate)
 ####INITIALISATION####
 
-Achats <- read.csv2(file = "Achats_csv.csv")
-Correspondances <- read.csv2(file = "Correspondance_sites.csv")
+options(shiny.launch.browser = TRUE)
+options(shiny.autoreload = TRUE)
+
+
+Achats <- read.csv2(file = "Achats_csv.csv", fileEncoding = "UTF-8-BOM")
+Correspondances <- read.csv2(file = "Correspondance_sites.csv", fileEncoding = "UTF-8-BOM")
 Clients <- read_sas('clients.sas7bdat')
 
 ####TRAITEMENT####
