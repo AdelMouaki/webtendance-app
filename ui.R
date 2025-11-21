@@ -31,7 +31,10 @@ fluidPage(
           
           tabsetPanel(
             
-            tabPanel("Vue globale",girafeOutput("distPlot")),
+            tabPanel("Vue globale",
+                     girafeOutput("distPlot"),
+                     girafeOutput("evoMensuelle")
+            ),
             
             tabPanel("Clients",
             ),

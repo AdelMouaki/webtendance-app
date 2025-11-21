@@ -38,11 +38,47 @@ function(input, output, session) {
         y = "Montant total (en €)"
       )+ 
       scale_fill_viridis_d() +
-      theme_minimal() 
+      theme_minimal() +
+      theme(
+      axis.text.x = element_text(angle = 20, vjust = 1, hjust = 0.8) #ajustement de la rotation du texte
+      )
+    
+    
+    hover_css <- "
+    filter: brightness(1.4) drop-shadow(0 0 5px rgba(78, 84, 200, 0.5)); 
+    transition: all 0.5s ease-out;  
+    "# Effet de halo au survol et transition de 0.5sec pour la fluidité
+    
+    tooltips_css <-"
+    background:white;padding:8px;border-radius:6px;font-size:13px; 
+    " # fond blanc et definition de la taille et bords
     
     girafe(
       ggobj = SiteAchats,
-      width_svg = 8, #largeur du graphique
+      width_svg = 8 #largeur du graphique 
+      )%>% 
+      girafe_options(
+        opts_hover(css = hover_css),
+        opts_tooltip(css = tooltips_css)
+      )
+
+  })
+  
+  # Graphique d'évolution mensuelle des montants
+  
+  output$evoMensuelle <- renderGirafe({
+  dataMois <- achats_filtres() %>%
+    mutate(
+      Mois = format(Date.Achat, "%Y-%m"),
+      Montant_fmt = format(Mnt.Achat, big.mark = " ", scientific = FALSE)
+    ) %>%
+    group_by(Mois) %>%
+    summarise(Montant_total = sum(Mnt.Achat)) %>%
+    arrange(Mois) %>%
+    mutate(
+      Mois_aff = format(as.Date(paste0(Mois, "-01")), "%b %Y"),
+      Montant_fmt = format(Montant_total, big.mark = " ", scientific = FALSE)
     )
   })
+  
 }
