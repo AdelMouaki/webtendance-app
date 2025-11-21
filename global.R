@@ -7,10 +7,9 @@ library(ggplot2)
 library(plotly)
 library(shinythemes)
 library(lubridate)
+library(ggiraph)
 ####INITIALISATION####
 
-options(shiny.launch.browser = TRUE)
-options(shiny.autoreload = TRUE)
 
 
 Achats <- read.csv2(file = "Achats_csv.csv", fileEncoding = "UTF-8-BOM")
