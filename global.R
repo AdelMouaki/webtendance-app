@@ -8,6 +8,7 @@ library(plotly)
 library(shinythemes)
 library(lubridate)
 library(ggiraph)
+library(sf)
 ####INITIALISATION####
 
 
