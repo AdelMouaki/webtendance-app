@@ -1,26 +1,28 @@
 #### PACKAGES ####
 library(tidyverse)
 library(shiny)
-library(haven)
+library(haven) # Pour lire le SAS si besoin, sinon read_sas n'est pas utilisé dans le global fourni mais dans le traitement
 library(ggplot2)
 library(plotly)
 library(lubridate)
 library(ggiraph)
 library(sf)
+
+# Nouveaux packages pour le design
 library(bslib)
 library(bsicons)
 
 #### INITIALISATION ####
+# (Assure-toi que les chemins de fichiers sont corrects sur ta machine)
 Achats <- read.csv2(file = "Achats_csv.csv", fileEncoding = "UTF-8-BOM")
 Correspondances <- read.csv2(file = "Correspondance_sites.csv", fileEncoding = "UTF-8-BOM")
 Clients <- read_sas('clients.sas7bdat')
 
-#### NETTOYAGE ####
+#### TRAITEMENT ####
 
 Achats <- filter(Achats, Num.Site != 7) 
-Achats$Date.Achat <- dmy(Achats$Date.Achat)
-
 Correspondances <- rename(Correspondances, Num.Site = NUM_SITE)
+Achats$Date.Achat <- dmy(Achats$Date.Achat)
 
 Clients <- rename(Clients, Id.Client = ID_CLIENT)
 Clients <- Clients %>%
@@ -34,22 +36,12 @@ Clients <- Clients %>%
     )
   )
 
-#### JOINTURES ####
+### JOINTURE ###
 Achats <- left_join(Achats, Correspondances, by = "Num.Site")
 Achats <- left_join(Achats, Clients, by = "Id.Client")
 
-# Site pour liste 
 sites_levels <- sort(unique(Achats$NOM_SITE))
 
-#### CRÉATION DE LA TABLE POUR LE SERVER ####
-
-achats_traites <- Achats %>%
-  mutate(
-    dep = case_when(
-      # Gestion de la Corse (20 -> 2A ou 2B)
-      substr(COD_POSTAL, 1, 2) == "20" & substr(COD_POSTAL, 1, 3) < "202" ~ "2A",
-      substr(COD_POSTAL, 1, 2) == "20" & substr(COD_POSTAL, 1, 3) >= "202" ~ "2B",
-      # Cas général (les 2 premiers chiffres)
-      TRUE ~ substr(COD_POSTAL, 1, 2)
-    )
-  )
+# --- DESIGN SYSTEM ---
+# On définit une palette pour que les graphiques soient assortis au thème
+my_palette <- c("#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7")
