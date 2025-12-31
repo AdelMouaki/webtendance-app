@@ -1,434 +1,258 @@
 server <- function(input, output, session) {
-  
-  # Jeu de données filtré selon les choix utilisateur
-  achats_filtres <- reactive({
-    donnees_filtrees <- Achats
 
-    # Filtre année
-    if (input$annee != "Tout") {
-      donnees_filtrees <- donnees_filtrees %>%
-        filter(year(Date.Achat) == input$annee)
-    }
+  ## formatage des nombres
+  f_num <- function(x) { format(x, big.mark = " ", scientific = FALSE) }
   
-     # Filtre site
-     if (!("Tout" %in% input$site)) {
-       donnees_filtrees <- donnees_filtrees %>%
-         filter(NOM_SITE %in% input$site)
-     }
-
-     # Filtre sexe
-     if (!("Tout" %in% input$sexe)) {
-       donnees_filtrees <- donnees_filtrees %>%
-         filter(COD_SEXE %in% input$sexe)
-     }
-
-     # Filtre tranche d'age
-     if (!("Tout" %in% input$age)) {
-       donnees_filtrees <- donnees_filtrees %>%
-         filter(TrancheAge %in% input$age)
-    }
-
-
-    donnees_filtrees
+  # Info-bulles et survolement
+  style_tooltip <- "background: #2c3e50; color: white; padding:8px; border-radius:4px; font-size:12px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);"
+  style_hover   <- "filter: brightness(1.2) drop-shadow(0 0 3px rgba(0,0,0,0.3)); cursor:pointer;"
+  
+  # ==============================================================================
+  # DONNÉES RÉACTIVES
+  # ==============================================================================
+  
+  ## Filtrage des données 
+  donnees_globale <- reactive({
+    df <- achats_traites
+    if (input$annee != "Tout") df <- filter(df, year(Date.Achat) == input$annee)
+    if (!("Tout" %in% input$site)) df <- filter(df, NOM_SITE %in% input$site)
+    if (!("Tout" %in% input$sexe)) df <- filter(df, COD_SEXE %in% input$sexe)
+    if (!("Tout" %in% input$age)) df <- filter(df, TrancheAge %in% input$age)
+    df
   })
   
-  kpi <- reactive({
-    df <- achats_filtres()
-    
-    tibble(
-      montant_total = sum(df$Mnt.Achat, na.rm = TRUE),
-      nb_achats = nrow(df),
-      panier_moyen = ifelse(nrow(df) == 0, 0, mean(df$Mnt.Achat, na.rm = TRUE)),
-      nb_clients = n_distinct(df$Id.Client),
-      montant_moyen_client = df %>% 
-        group_by(Id.Client) %>% 
-        summarise(total = sum(Mnt.Achat, na.rm=TRUE)) %>% 
-        summarise(mean(total)) %>% 
-        pull()
-    )
+  ## Filtrage des données géographiques pour KPI
+  donnees_geo <- reactive({
+    df <- donnees_globale()
+    if (!is.null(input$map_selected)) df <- filter(df, dep %in% input$map_selected)
+    df
   })
   
-  output$kpi_montant_total <- renderUI({
-    div(class="kpi-box",
-        h4("Montant total (en €)"),
-        h3(format(kpi()$montant_total, big.mark=" ", scientific = FALSE))
-    )
+  # ==============================================================================
+  # KPI
+  # ==============================================================================
+  
+  kpi_global <- reactive({
+    df <- donnees_globale()
+    list(total = sum(df$Mnt.Achat, na.rm=TRUE), nb = nrow(df), panier = mean(df$Mnt.Achat, na.rm=TRUE), clients = n_distinct(df$Id.Client))
   })
   
-  output$kpi_nb_achats <- renderUI({
-    div(class="kpi-box",
-        h4("Nombre d'achats"),
-        h3(kpi()$nb_achats, big.mark=" ")
-    )
+  ## KPI global
+  output$kpi_montant_total <- renderText({ f_num(kpi_global()$total) })
+  output$kpi_nb_achats     <- renderText({ f_num(kpi_global()$nb) })
+  output$kpi_panier_moyen  <- renderText({ paste(f_num(round(kpi_global()$panier)), "€") })
+  output$kpi_nb_clients    <- renderText({ f_num(kpi_global()$clients) })
+  
+  ## Calcul des KPI selon la zone sélectionnée
+  stats_geo <- reactive({
+    df <- donnees_geo()
+    list(ca = sum(df$Mnt.Achat, na.rm=TRUE), vol = nrow(df), panier = ifelse(nrow(df)==0, 0, mean(df$Mnt.Achat, na.rm=TRUE)),clients = n_distinct(df$Id.Client))
   })
   
-  output$kpi_panier_moyen <- renderUI({
-    div(class="kpi-box",
-        h4("Panier moyen"),
-        h3(format(round(kpi()$panier_moyen), big.mark=" "))
-    )
-  })
-  
-  output$kpi_nb_clients <- renderUI({
-    div(class="kpi-box",
-        h4("Nombre de clients"),
-        h3(kpi()$nb_clients, big.mark=" ")
-    )
-  })
-  
-  output$kpi_montant_moyen_client <- renderUI({
-    div(class="kpi-box",
-        h4("Montant moyen par client"),
-        h3(format(round(kpi()$montant_moyen_client), big.mark=" "))
-    )
-  })
+  output$titre_kpi_geo   <- renderText({ ifelse(is.null(input$map_selected), "France entière", "Zone(s) sélectionnée(s)") })
+  output$kpi_geo_ca      <- renderUI({ h3(paste(f_num(stats_geo()$ca), "€")) })
+  output$kpi_geo_vol     <- renderUI({ h3(f_num(stats_geo()$vol)) })
+  output$kpi_geo_panier  <- renderUI({ h3(paste(f_num(round(stats_geo()$panier)), "€")) })
+  output$kpi_geo_clients <- renderUI({ h3(f_num(stats_geo()$clients)) })
   
   
-  # Graphique des achats par site
+  # ==============================================================================
+  # GRAPHIQUES GLOBAL
+  # ==============================================================================
+  
   output$distPlot <- renderGirafe({
+    ## Arrêt si aucune donnée disponible
+    req(nrow(donnees_globale()) > 0)
     
-    SiteAchatsFiltre <- achats_filtres() %>%
-      group_by(NOM_SITE) %>% # On regroupe les lignes par site
-      summarise(Montant = sum(Mnt.Achat, na.rm = TRUE)) %>%
-      arrange(desc(Montant)) %>%
-      mutate(NOM_SITE = factor(NOM_SITE, levels = sites_levels), Montant_fmt = format(Montant, big.mark = " ", scientific = FALSE)) # On transforme NOM_SITE en facteur avec l'ordre du tri précédent
+    ## Agrégation par site et tri décroissant
+    df <- donnees_globale() %>%
+      group_by(NOM_SITE) %>% summarise(Montant = sum(Mnt.Achat, na.rm = TRUE)) %>% arrange(desc(Montant)) %>%
+      mutate(NOM_SITE = factor(NOM_SITE, levels = sites_levels))
     
-    SiteAchats <- ggplot(SiteAchatsFiltre, aes(x = reorder(NOM_SITE, -Montant), y= Montant)) +
-      geom_col_interactive(aes( fill = NOM_SITE, tooltip = paste0( "<b>Site :</b> ", NOM_SITE, "<br><b>Montant :</b> ", Montant_fmt, " €" ),data_id = NOM_SITE))+ #Mis en forme de l'infobulle 
-           
-      scale_y_continuous(labels = function(x) format(x, big.mark = " ", scientific = FALSE))+ #Affichage des montants sans écriture scientifique + séparateur de milliers
-      labs(
-        title = paste0("Montant d'achat par site en ", input$annee),
-        x = "Site",
-        y = "Montant total (en €)"
-      )+ 
-      scale_fill_viridis_d(drop = FALSE, name = "Site") +
-      theme_minimal() +
-      theme(
-      axis.text.x = element_text(angle = 20, vjust = 1, hjust = 0.8) #ajustement de la rotation du texte
-      )
+    gg <- ggplot(df, aes(x = reorder(NOM_SITE, -Montant), y= Montant)) +
+      geom_col_interactive(aes(fill = NOM_SITE, data_id = NOM_SITE,
+                               tooltip = paste0("<b>Site :</b> ", NOM_SITE, "<br><b>Montant :</b> ", f_num(Montant), " €"))) + 
+      scale_y_continuous(labels = f_num) +
+      labs(x = NULL, y = NULL) + scale_fill_viridis_d(drop = FALSE) + theme_minimal() +
+      theme(axis.text.x = element_text(angle = 20, vjust = 1, hjust = 0.8), legend.position = "none")
     
-    
-    hover_css <- "
-    filter: brightness(1.4) drop-shadow(0 0 5px rgba(78, 84, 200, 0.5)); 
-    transition: all 0.5s ease-out;  
-    "# Effet de lumière au survol et transition de 0.5sec pour la fluidité
-    
-    tooltip_css <- "
-    background:white;
-    color: #ECF0F1;
-    padding:8px;
-    border-radius:6px;
-    font-size:13px;
-    "
-    
-    girafe(
-      ggobj = SiteAchats,
-      width_svg = 8 #largeur du graphique 
-      )%>% 
-      girafe_options(
-        opts_hover(css = hover_css),
-        opts_tooltip(css = tooltip_css, use_fill = TRUE),
-        opts_selection(
-          type = "multiple",
-          only_shiny = TRUE
-        )
-      )
-
+    ## interactif
+    girafe(ggobj = gg, width_svg = 8) %>% 
+      girafe_options(opts_hover(css = style_hover), opts_tooltip(css = style_tooltip, use_fill = TRUE),
+                     opts_selection(type = "multiple", only_shiny = TRUE), opts_toolbar(saveaspng = FALSE))
   })
   
-  # Graphique d'évolution mensuelle des montants
   output$evoMensuelle <- renderGirafe({
-    evoMensuelleFiltre <- achats_filtres() %>%
-      mutate(
-        Mois = floor_date(Date.Achat, unit = "month"), NOM_SITE = factor(NOM_SITE, levels = sites_levels))%>%
-      group_by(Mois, NOM_SITE) %>%
-      summarise(
-        Montant_total = sum(Mnt.Achat, na.rm = TRUE)) %>%
-      arrange(Mois) %>%
-      mutate(
-        Mois_aff = format(Mois, "%b %Y"),
-        Montant_fmt = format(Montant_total, big.mark = " ", scientific = FALSE),
-        tooltip_txt = paste0(
-          "<b>Mois :</b> ", Mois_aff,
-          "<br><b>Site :</b> ", NOM_SITE,
-          "<br><b>Montant :</b> ", Montant_fmt, " €"
-        ),
-        data_id_txt = NOM_SITE
-      )
+    req(nrow(donnees_globale()) > 0)
     
-    evoMensuelle <- ggplot(
-      evoMensuelleFiltre,
-      aes(x = Mois, y = Montant_total, color = NOM_SITE, group = NOM_SITE)) +
-      geom_line_interactive(
-        aes(tooltip = tooltip_txt, data_id = data_id_txt),
-        linewidth = 1) +
-      geom_point_interactive(
-        aes(
-          tooltip = tooltip_txt,
-          data_id = data_id_txt),
-        size = 3) +
-      scale_y_continuous(labels = function(x) format(x, big.mark = " ", scientific = FALSE)) +
-      scale_color_viridis_d(drop = FALSE, name = "Site") +
-      labs(
-        title = paste0("Évolution mensuelle des montants en ", input$annee),
-        x = "Date",
-        y = "Montant total (en €)",
-        color = "Site"
-      ) +
-      theme_minimal() +
-      theme(
-        axis.text.x = element_text(angle = 20, vjust = 1, hjust = 0.8)
-      )
+    ## Agrégation mensuelle
+    df <- donnees_globale() %>%
+      mutate(Mois = floor_date(Date.Achat, unit = "month"), NOM_SITE = factor(NOM_SITE, levels = sites_levels)) %>%
+      group_by(Mois, NOM_SITE) %>% summarise(Montant = sum(Mnt.Achat, na.rm = TRUE), .groups="drop") %>%
+      mutate(tooltip = paste0("<b>", format(Mois, "%b %Y"), "</b><br><b>Site :</b> ", NOM_SITE, "<br><b>Montant :</b> ", f_num(Montant), " €"))
     
-    # CSS
-    hover_css <- "
-    stroke-width: 2px;
-    r: 9px;
-    transition: all 0.5s ease;
-    "
+    gg <- ggplot(df, aes(x = Mois, y = Montant, color = NOM_SITE, group = NOM_SITE)) +
+      geom_line_interactive(aes(tooltip = tooltip, data_id = NOM_SITE), linewidth = 1) +
+      geom_point_interactive(aes(tooltip = tooltip, data_id = NOM_SITE), size = 3) +
+      scale_y_continuous(labels = f_num) + scale_color_viridis_d(drop = FALSE) +
+      labs(x = NULL, y = NULL, color = NULL) + theme_minimal() + theme(legend.position = "bottom")
     
-    tooltip_css <- "
-    background:white;
-    color: #ECF0F1;
-    padding:8px;
-    border-radius:6px;
-    font-size:13px;
-    "
-    # options
-    girafe(
-      ggobj = evoMensuelle,
-      width_svg = 10,
-      height_svg = 6
-    ) %>%
-      girafe_options(
-        opts_hover(css = hover_css),
-        opts_tooltip(css = tooltip_css, use_fill = TRUE),
-        opts_sizing(rescale = TRUE),
-        opts_selection(
-          type = "multiple",
-          only_shiny = TRUE
-        ),
-        css = "
-        stroke: black;
-        stroke-width: 3px;
-        opacity: 1;
-      ",
-    opts_hover_inv(
-      css = "opacity:0.2;"
-    ))
-
+    girafe(ggobj = gg, width_svg = 8, height_svg = 5) %>%
+      
+      ## Grise les autres courbes au survol
+      girafe_options(opts_hover(css = "stroke-width: 3px; r: 7px; transition: all 0.2s ease;"),
+                     opts_hover_inv(css = "opacity:0.2; filter: grayscale(100%);"),
+                     opts_tooltip(css = style_tooltip, use_fill = TRUE), opts_selection(type = "multiple", only_shiny = TRUE),
+                     opts_sizing(rescale = TRUE), opts_toolbar(saveaspng = FALSE))
   })
   
-  
-  carte_data <- reactive({
-    
-    deps <- st_read(
-      "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson",
-      quiet = TRUE
-    )
-    
-    achats_dep <- achats_filtres() %>%
-      mutate(
-        dep = case_when(
-          substr(COD_POSTAL, 1, 2) == "20" & substr(COD_POSTAL, 1, 3) < "202" ~ "2A",
-          substr(COD_POSTAL, 1, 2) == "20" & substr(COD_POSTAL, 1, 3) >= "202" ~ "2B",
-          TRUE ~ substr(COD_POSTAL, 1, 2)
-        )
-      ) %>%
-      group_by(dep) %>%
-      summarise(
-        nb_commandes = n(),
-        montant_total = sum(Mnt.Achat, na.rm = TRUE),
-        .groups = "drop"
-      )
-    
-    deps %>% left_join(achats_dep, by = c("code" = "dep"))
-  })
+  # ==============================================================================
+  # CARTE
+  # ==============================================================================
   
   output$map <- renderGirafe({
+    ## Lis les données géographiques
+    if (!exists("deps")) deps <- st_read("departements.geojson", quiet = TRUE)
     
-    p <- ggplot(carte_data()) +
-      geom_sf_interactive(
-        aes(
-          fill = montant_total,
-          tooltip = paste0(
-            "<b>Département : </b>", nom,
-            "<br><b>Montant : </b>", format(montant_total, big.mark = " "),
-            "<br><b>Commandes : </b>", nb_commandes
-          )
-        ),
-        color = "white",
-      ) +
-      scale_fill_viridis_c(
-        na.value = "grey90",
-        labels = scales::label_number(big.mark = " ")
-      ) +
-      labs(
-        title = paste0("Évolution mensuelle des montants en ", input$annee))+
-      theme_void()
+    achats_dep <- donnees_globale() %>% group_by(dep) %>% summarise(ca = sum(Mnt.Achat, na.rm = TRUE), .groups = "drop")
     
-    girafe(ggobj = p)
+    ## Jointure : Données spatiales + Données d'achat
+    carte_join <- deps %>% left_join(achats_dep, by = c("code" = "dep"))
+    
+    gg <- ggplot(carte_join) +
+      geom_sf_interactive(aes(fill = ca, data_id = code,
+                              tooltip = paste0("<b>", nom, " (", code, ")</b><br>CA: ", f_num(ca), " €")), color = "white", size = 0.1) +
+      scale_fill_viridis_c(option = "magma", direction = -1, name = "Chiffre d'Affaires (€)", labels = f_num) +
+      theme_void() + theme(legend.position = "right", legend.title = element_text(face = "bold", size = 10)) 
+    
+    # CSS pour la séléction
+    css_sel <- "fill: #800020 !important; stroke: #800020 !important; stroke-width: 1.5px !important; filter: drop-shadow(0 0 2px rgba(0,0,0,0.3)) !important; opacity: 1 !important;" 
+    
+    girafe(ggobj = gg, width_svg = 8, height_svg = 6, 
+           options = list(opts_hover(css = "filter: brightness(1.2); cursor: pointer;"),
+                          opts_tooltip(css = style_tooltip), # Tooltip blanc sur fond sombre
+                          opts_selection(type = "multiple", css = css_sel, only_shiny = TRUE),
+                          opts_toolbar(saveaspng = FALSE), opts_sizing(rescale = TRUE)))
   })
   
-  # =========================
-  # CLIENTS
-  # =========================
-  clients_segmentation <- reactive({
-    
-    achats_filtres() %>%
-      group_by(Id.Client) %>%
-      summarise(
-        nb_achats = n(),
-        montant_total = sum(Mnt.Achat, na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      filter(nb_achats > 0, montant_total > 0) %>%
-      mutate(
-        log_nb_achats = log(nb_achats),
-        log_montant_total = log(montant_total)
-      )
-  })
+  # ==============================================================================
+  # ANALYSE CLIENT
+  # ==============================================================================
   
   output$clients_density <- renderGirafe({
     
-    df <- clients_segmentation()
+    ## Transformation log pour linéariser la distribution
+    df <- donnees_globale() %>% group_by(Id.Client) %>%
+      summarise(nb = n(), mnt = sum(Mnt.Achat, na.rm=TRUE), .groups="drop") %>%
+      filter(nb > 0, mnt > 0) %>% mutate(lnb = log(nb), lmnt = log(mnt))
     
-    p <- ggplot(df, aes(
-      x = log_nb_achats,
-      y = log_montant_total
-    )) +
-      
-      geom_bin2d_interactive(
-        bins = 30,
-        aes(
-          fill = after_stat(count),
-          tooltip = paste0(
-            "<b>Nb de clients :</b> ", after_stat(count),
-            "<br><b>Nb d’achats (≈) :</b> ", round(exp(after_stat(x))),
-            "<br><b>Montant total (≈) :</b> ",
-            format(round(exp(after_stat(y))), big.mark = " "), " €"
-          ),
-          data_id = after_stat(paste0(x, "_", y))
-        )
-      ) +
-      
-      scale_fill_viridis_c(
-        name = "Nb clients",
-        labels = scales::label_number(big.mark = " "),
-        trans = "sqrt"
-      ) +
-      
-      labs(
-        title = "Densité des clients par comportement d'achat",
-        x = "log(Nombre d’achats)",
-        y = "log(Montant total (€))"
-      ) +
-      
-      theme_minimal(base_size = 13)
+    p <- ggplot(df, aes(x = lnb, y = lmnt)) +
+      geom_bin2d_interactive(bins = 30, aes(fill = after_stat(count), data_id = after_stat(paste0(x, "_", y)),
+                                            tooltip = paste0("<b>Nombre de clients :</b> ", after_stat(count), "<br><b>Achats (≈) :</b> ", round(exp(after_stat(x))),
+                                                             "<br><b>Total (≈) :</b> ", f_num(round(exp(after_stat(y)))), " €"))) +
+      scale_fill_viridis_c(name = "Nombre de clients", labels = f_num, trans = "sqrt") +
+      labs(title = "Densité des clients", x = "log Nombre d’achats", y = "log Montant total (€)") + theme_minimal(base_size = 13)
     
-    girafe(
-      ggobj = p,
-      width_svg = 10,
-      height_svg = 6
-    ) %>%
-      girafe_options(
-        opts_hover(css = "
-        stroke: black;
-        stroke-width: 1.5px;
-      "),
-        opts_hover_inv(css = "opacity:0.25;"),
-        opts_tooltip(css = "
-        background: white;
-        color: black;
-        padding: 8px;
-        border-radius: 6px;
-        font-size: 13px;
-      "),
-        opts_selection(type = "single", only_shiny = TRUE),
-        opts_sizing(rescale = TRUE)
-      )
+    girafe(ggobj = p, width_svg = 10, height_svg = 6) %>%
+      girafe_options(opts_hover(css = "stroke: black; stroke-width: 1.5px;"), opts_hover_inv(css = "opacity:0.25;"),
+                     opts_tooltip(css = style_tooltip), opts_selection(type = "none"), opts_sizing(rescale = TRUE))
   })
   
-####CLIENTS DETAILLES####
+  # ==============================================================================
+  # DÉTAIL CLIENT
+  # ==============================================================================
   
-  clients_table <- reactive({
-    
-    achats_filtres() %>%
-      group_by(Id.Client,TXT_NOM,TXT_PRENOM, COD_SEXE,TrancheAge,COD_POSTAL,NBR_ENFT) %>%
-      summarise(
-        nb_achats = n(),
-        montant_total = sum(Mnt.Achat, na.rm = TRUE),
-        panier_moyen = mean(Mnt.Achat, na.rm = TRUE),
-        site_prefere = NOM_SITE[which.max(table(NOM_SITE))],
-        .groups = "drop") %>%
-      arrange(desc(montant_total))
+  ## Identification du site favori basé sur la fréquence d'achat par client
+  site_prefere <- reactive({
+    donnees_globale() %>% count(Id.Client, NOM_SITE) %>% arrange(desc(n)) %>% group_by(Id.Client) %>% slice(1) %>% select(Id.Client, Site_Favori = NOM_SITE)
   })
   
+  ## Agrégation des indicateurs de performance (CA, Panier, Volume) par client
+  stats_clients <- reactive({
+    donnees_globale() %>% group_by(Id.Client) %>% summarise(Commandes = n(), Total = sum(Mnt.Achat), Panier = mean(Mnt.Achat)) %>% arrange(desc(Total))
+  })
+  
+  ## Fusion des infos  avec les statistiques d'achat
+  donnees_affichage <- reactive({
+    req(nrow(stats_clients()) > 0)
+    infos <- Clients %>% select(Id.Client, TXT_NOM, TXT_PRENOM, COD_SEXE, Age, COD_POSTAL)
+    stats_clients() %>% left_join(infos, by="Id.Client") %>% left_join(site_prefere(), by="Id.Client") %>%
+      select(Id.Client, TXT_NOM, TXT_PRENOM, COD_SEXE, Age, COD_POSTAL, Site_Favori, Commandes, Total, Panier)
+  })
+  
+  ## Rendu du tableau interactif permettant la sélection d'un profil
   output$table_clients <- DT::renderDataTable({
-    
-    DT::datatable(
-      clients_table(),
-      rownames = FALSE,
-      selection = "single",
-      options = list(
-        pageLength = 10,
-        autoWidth = TRUE
-      )
-    ) %>%
-      DT::formatCurrency(
-        c("montant_total", "panier_moyen"),
-        currency = "€",
-        mark = " ",
-        digits = 0
-      )
+    DT::datatable(donnees_affichage(), selection="single", rownames=FALSE, options=list(pageLength=8, scrollX=TRUE, dom='frtp')) %>%
+      DT::formatCurrency(c("Total", "Panier"), currency="€", digits=0)
   })
   
-  client_selectionne <- reactive({
+  ## Génération dynamique de la fiche du client sélectionné
+  output$fiche_client_ui <- renderUI({
     
-    req(input$table_clients_rows_selected)
+    ## Gestion de l'affichage par défaut (si aucune ligne n'est sélectionnée)
+    if (is.null(input$table_clients_rows_selected)) {
+      return(card(height="400px", class="d-flex align-items-center justify-content-center bg-light text-muted", 
+                  h5("Sélectionnez un client", class="mt-2")))
+    }
     
-    clients_table() %>%
-      slice(input$table_clients_rows_selected)
-  })
-  
-  output$fiche_client <- renderUI({
+    sel <- donnees_affichage() %>% slice(input$table_clients_rows_selected)
     
-    df <- client_selectionne()
-    req(nrow(df) == 1)
+    ## Attribution du badge selon le CA total
+    badge_clt <- if (sel$Total >= 1000000) span(class="badge bg-primary", "💎 Diamant") else 
+      if (sel$Total >= 500000) span(class="badge bg-info", "💿 Platine") else 
+        if (sel$Total >= 100000) span(class="badge bg-warning text-dark", "🏆 Or") else 
+          span(class="badge bg-secondary", "Standard")
     
-    div(
-      class = "client-card",
+    color_avatar <- if(sel$COD_SEXE == "Homme") "text-primary" else "text-danger"
+    
+    ## Construction de la carte HTML
+    card(
+      class = "shadow border-0 p-0 overflow-hidden", style = "border-radius: 12px;",
       
-      h3(paste(df$TXT_PRENOM, df$TXT_NOM)),
-      tags$hr(),
-      
-      fluidRow(
-        column(6, strong("ID client : "), df$Id.Client),
-        column(6, strong("Sexe : "), df$COD_SEXE)
+      div(class = "bg-primary text-white p-3 text-center",
+          h4(class="m-0 fw-bold", paste(sel$TXT_PRENOM, sel$TXT_NOM))
       ),
       
-      fluidRow(
-        column(6, strong("Tranche d’âge : "), df$TrancheAge),
-        column(6, strong("Code postal : "), df$COD_POSTAL)
+      card_body(
+        class = "p-3",
+        div(class="row align-items-center h-100",
+            
+            # COLONNE GAUCHE : Avatar
+            div(class="col-4 text-center border-end pe-3", 
+                bs_icon("person-circle", size="4.5em", class=paste("mb-3", color_avatar)), 
+                div(badge_clt)
+            ),
+
+            div(class="col-8 ps-4", 
+                
+                # Sexe
+                div(class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-1", 
+                    span(class="text-muted small", "Sexe"), 
+                    strong(sel$COD_SEXE)),
+                
+                # Age
+                div(class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-1", 
+                    span(class="text-muted small", "Age"), 
+                    strong(sel$Age)),
+                
+                # CP
+                div(class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-1", 
+                    span(class="text-muted small", "Code Postal"), 
+                    strong(sel$COD_POSTAL)),
+                
+                # Site
+                div(class="d-flex justify-content-between align-items-center", 
+                    span(class="text-muted small", "Site Favori"), 
+                    span(class="text-primary fw-bold", sel$Site_Favori))
+            )
+        )
       ),
       
-      fluidRow(
-        column(6, strong("Nombre d’enfants : "), df$NBR_ENFT),
-        column(6, strong("Site préféré : "), df$site_prefere)
-      ),
-      
-      tags$hr(),
-      
-      fluidRow(
-        column(4, strong("Nb achats"), df$nb_achats),
-        column(4, strong("Montant total (€)"),
-               format(round(df$montant_total), big.mark = " ")),
-        column(4, strong("Panier moyen (€)"),
-               format(round(df$panier_moyen), big.mark = " "))
+      div(class = "bg-light p-3 d-flex justify-content-around align-items-center border-top",
+          div(class="text-center", h5(sel$Commandes, class="fw-bold m-0"), tags$small(class="text-muted", "Commandes")),
+          div(class="text-center", h5(format(sel$Total, big.mark=" ", scientific=FALSE), class="fw-bold m-0 text-primary"), tags$small(class="text-muted", "Total €")),
+          div(class="text-center", h5(format(round(sel$Panier), big.mark=" "), class="fw-bold m-0"), tags$small(class="text-muted", "Panier Moy."))
       )
     )
   })
-  
-  
 }

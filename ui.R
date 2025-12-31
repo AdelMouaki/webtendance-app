@@ -1,151 +1,206 @@
-fluidPage(
+ui <- page_sidebar(
   
-  # =========================
-  # THEME 
-  # ========================= 
-  theme = shinytheme("lumen"),
+  fillable = FALSE, #scroll desactivé
   
-  # =========================
-  # TITRE
-  # =========================
-  titlePanel("Suivi des performances e-commerce"),
-  
-  # =========================
-  # MIS EN PAGE
-  # =========================
-  sidebarLayout(
-    
-    sidebarPanel(
-      width = 3,
-      
-      h4("Filtres"),
-      hr(),
-      
-      selectInput(
-        "annee",
-        "Année",
-        choices = c("Tout", unique(year(Achats$Date.Achat))),
-        selected = "Tout"
-      ),
-      
-      selectInput(
-        "site",
-        "Site",
-        choices = c("Tout", unique(Achats$NOM_SITE)),
-        multiple = TRUE,
-        selected = "Tout"
-      ),
-      
-      selectInput(
-        "sexe",
-        "Sexe",
-        choices = c("Tout", unique(Clients$COD_SEXE)),
-        selected = "Tout"
-      ),
-      
-      selectInput(
-        "age",
-        "Tranche d’âge",
-        choices = c("Tout", "Moins de 30", "30 à 45", "Plus de 45"),
-        selected = "Tout"
-      )
-    ),
-    
-    mainPanel(
-      width = 9,
-      
-      tabsetPanel(
-        
-        # =========================
-        # ONGLET VUE GLOBALE
-        # =========================
-        tabPanel(
-          "Vue globale",
-          
-          # ===== KPI =====
-          fluidRow(
-            hr(),
-            column(2, uiOutput("kpi_montant_total")),
-            column(2, uiOutput("kpi_nb_achats")),
-            column(2, uiOutput("kpi_panier_moyen")),
-            column(3, uiOutput("kpi_nb_clients")),
-            column(3, uiOutput("kpi_montant_moyen_client"))
-          ),
-          
-          hr(),
-          
-          girafeOutput("distPlot", width = "auto", height = "450px"),
-          
-          hr(),
-          
-          girafeOutput("evoMensuelle", width = "auto", height = "450px")
-        ),
-        
-        # =========================
-        # ONGLET CARTOGRAPHIE
-        # =========================
-        tabPanel(
-          "Cartographie",
-          
-          girafeOutput("map", width = "100%", height = "600px")
-        ),
-        
-        # =========================
-        # ONGLET CLIENTS
-        # =========================
-        tabPanel(
-          "Clients",
-          
-          girafeOutput("clients_density", width = "100%", height = "600px")
-        ),
-        
-        # =========================
-        # ONGLET DÉTAIL CLIENT
-        # =========================
-        tabPanel(
-          "Détail client",
-          
-          fluidRow(
-            
-            # === FICHE CLIENT (HAUT / DROITE) ===
-            column(
-              4,
-              uiOutput("fiche_client")
-            ),
-            
-            # === TABLE CLIENTS ===
-            column(
-              8,
-              DT::dataTableOutput("table_clients")
-            )
-          )
-        )
-      )
-    )
+  title = "Performance web-tendance",
+  theme = bs_theme(
+    version = 5,
+    bootswatch = "zephyr", 
+    primary = "#2c3e50",
+    secondary = "#95a5a6"
   ),
   
   # =========================
-  # CSS GLOBAL
+  # FILTRES
   # =========================
-  tags$style(HTML("
-    .kpi-box {
-      background-color: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      text-align: center;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-      margin-bottom: 10px;
-    }
-    .kpi-box h3 {
-      font-weight: bold;
-      margin: 5px 0 0 0;
-    }
-    .client-card {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      border-left: 5px solid #2c7be5;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    }
-  "))
+  
+  sidebar = sidebar(
+    title = "Filtres",
+    bg = "#f8f9fa", # Fond gris
+    class = "p-3",  # Padding
+    
+    selectInput(
+      "annee", "Année",
+      choices = c("Tout", unique(year(Achats$Date.Achat))),
+      selected = "Tout"
+    ),
+    
+    selectInput(
+      "site", "Site",
+      choices = c("Tout", unique(Achats$NOM_SITE)),
+      multiple = TRUE, selected = "Tout"
+    ),
+    
+    selectInput(
+      "sexe", "Sexe",
+      choices = c("Tout", unique(Clients$COD_SEXE)),
+      selected = "Tout"
+    ),
+    
+    selectInput(
+      "age", "Tranche d’âge",
+      choices = c("Tout", "Moins de 30", "30 à 45", "Plus de 45"),
+      selected = "Tout"
+    ),
+    
+    # footer
+    tags$hr(),
+    tags$small(em("Adel Mouaki-Dadi", tags$br(),"Brun Bahoun Houtoukpe"), style = "color: #999;")
+  ),
+  
+  # onglets
+  navset_card_underline(
+    title = "Tableau de bord",
+    
+  # ==============================================================================
+  # GRAPHIQUES GLOBAL
+  # ==============================================================================
+  
+    nav_panel(
+      title = "Vue globale",
+      icon = bs_icon("bar-chart-line"), # Icône
+      
+      # Ligne des KPI (Value Boxes)
+      layout_columns(
+        fill = FALSE,
+        value_box(
+          title = "Montant total",
+          value = uiOutput("kpi_montant_total"),
+          showcase = bs_icon("currency-euro"),
+          theme = "primary"
+        ),
+        value_box(
+          title = "Nombre d'achats",
+          value = uiOutput("kpi_nb_achats"),
+          showcase = bs_icon("cart-check"),
+          theme = "teal"
+        ),
+        value_box(
+          title = "Panier moyen",
+          value = uiOutput("kpi_panier_moyen"),
+          showcase = bs_icon("bag"),
+          theme = "info"
+        ),
+        value_box(
+          title = "Clients uniques",
+          value = uiOutput("kpi_nb_clients"),
+          showcase = bs_icon("people"),
+          theme = "purple"
+        )
+      ),
+      
+      br(), 
+      
+      card(
+        height = "1100px",
+        full_screen = TRUE,
+        card_header("Répartition du CA par site", class = "bg-light d-flex align-items-center"),
+        card_body(
+          class = "p-0",
+          girafeOutput("distPlot", width = "100%", height = "100%")
+        )
+      ),
+      
+      br(), # Espace
+      
+      # --- Graph 2 ---
+      card(
+        height = "1200px",
+        full_screen = TRUE,
+        card_header("Évolution mensuelle des ventes", class = "bg-light d-flex align-items-center"),
+        card_body(
+          class = "p-0",
+          girafeOutput("evoMensuelle", width = "100%", height = "100%")
+        )
+      )
+    ),
+    
+  # ==============================================================================
+  # CARTE
+  # ==============================================================================
+    
+    nav_panel(
+      title = "Cartographie",
+      icon = bs_icon("geo-alt"),
+      
+      # KPI SPÉCIFIQUES À LA CARTE
+      layout_columns(
+        fill = FALSE,
+        value_box(
+          title = textOutput("titre_kpi_geo"), # Titre dynamique
+          value = uiOutput("kpi_geo_ca"),
+          showcase = bs_icon("currency-euro"),
+          theme = "primary",
+          height = "150px"
+        ),
+        value_box(
+          title = "Nombre d'achats",
+          value = uiOutput("kpi_geo_vol"),
+          showcase = bs_icon("cart-check"),
+          theme = "teal",
+          height = "150px"
+        ),
+        value_box(
+          title = "Panier moyen",
+          value = uiOutput("kpi_geo_panier"),
+          showcase = bs_icon("bag"),
+          theme = "info",
+          height = "150px"
+        ),
+        value_box(
+          title = "Clients uniques",
+          value = uiOutput("kpi_geo_clients"),
+          showcase = bs_icon("people"),
+          theme = "purple",
+          height = "150px"
+        )
+      ),
+      
+      card(
+        card_header("Maillage territorial des ventes"),
+        height = "1300px", 
+        full_screen = TRUE,
+        girafeOutput("map", width = "100%", height = "100%")
+      )
+    ),
+    
+  # ==============================================================================
+  # ANALYSE CLIENT
+  # ==============================================================================
+  
+    nav_panel(
+      title = "Analyse clients",
+      icon = bs_icon("person-vcard"),
+      
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Profilage et comportement d'achat"),
+          girafeOutput("clients_density", height = "900px")
+        )
+      )
+    ),
+    
+  # ==============================================================================
+  # DÉTAIL CLIENT
+  # ==============================================================================
+    
+    nav_panel(
+      title = "Détail client",
+      icon = bs_icon("search"),
+      
+      layout_columns(
+        col_widths = c(4, 8),
+        
+        # Fiche client à gauche
+        uiOutput("fiche_client_ui"),
+        
+        # Table à droite
+        card(
+          card_header("Base de données clients"),
+          DT::dataTableOutput("table_clients")
+        )
+      )
+    )
+  )
 )
